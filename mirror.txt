@@ -1,0 +1,3 @@
+^!Save
+
+^!Shell xcopy /s "^$GetDocName$" "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\J_drive_Git Commits\Git Commits" /Y

@@ -1,0 +1,2681 @@
+= V4 Outline MultiLine NoSorting TabWidth=30
+
+H="Outline"
+/* 
+********************HEADING******************** 
+
+Project Name: Adverse Consequences of Unmet Need among Probable Dementia Patients
+
+Date Started: 1/7/20
+
+Primary Investigator: Jenny Reckrey
+Funding Source: GEMSSTAR
+
+Created by: EBL
+
+Primary Analyst: EBL
+Secondary Analyst: MH
+
+Datasets Used: nhats
+
+
+*/
+ 
+//STATA
+// Global Macros use $ symbol to be called. 
+
+//Clean NHATS 
+global nhats "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\base_data"
+
+//Intermediate Data Path
+global intpath "D:\nhats\Projects\caregiving\jr_dem_paid_cgs_and_cg_strain\data\int_data"
+
+// Final Data Path
+global datapath "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\"
+
+//Log files path
+global logpath "D:\NHATS\Projects\caregiving\jr_dem_paid_cgs_and_cg_strain\output\logs"
+
+//Log files path
+global outpath "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\output\in_progress"
+
+H="table 1 cross-sectional"
+
+use "${nhats}\sp_round_1_8_public_sens_only.dta" if inlist(wave,1,5,7), clear
+gen income_adj=0
+replace income_adj= (240.007/224.939)*aveincome if wave==1
+replace income_adj= (240.007/229.594)*aveincome if wave==2
+replace income_adj= (240.007/232.957)*aveincome if wave==3
+replace income_adj= (240.007/236.736)*aveincome if wave==4
+replace income_adj= (240.007/237.017)*aveincome if wave==5
+//replace income_adj= (240.007/240.007)*aveincome if wave==6
+replace income_adj=income_adj/(240.007/237.017)
+label var income_adj "Income, 2015$"
+
+egen a1=rowtotal(toil_j dres_j bath_j meds_j bank_j)
+gen severe=a1==5
+gen sev_dem=severe==1 & prob_dem==1
+label var sev_dem "Severe dementia"
+
+svyset varunit [pw=anfinw], strat(varstrat)
+
+//merge 1:m spid wave using `nsoc'
+
+merge 1:m spid wave using "${nhats}\nsoc_round_1_7.dta", gen(nsocm) 
+drop cg_relationship_cat1
+tostring spid, gen(strspid)
+gen nsocid=strspid+opid
+sort nsocid wave
+foreach i in 1 5 7 {
+by nsocid: egen has`i'=max(wave==`i')
+}
+
+gen nsoc1and5=has1==1 & has5==1
+gen nsoc1and7=has1==1 & has7==1
+gen nsoc5and7=has5==1 & has7==1
+gen nsocall=has1==1 & has5==1 & has7==1
+/*
+tab1 nsoc* if prob_dem==1
+tab1 nsoc* if sev_dem==1
+tab1 nsoc*a* if prob_dem==1
+tab1 nsoc*a* if sev_dem==1
+*/
+gen tot_hrswk_inf=tot_hrswk_help_i-tot_hrswk_paid_i
+
+label var tot_hrswk_inf "Hours of care per week from all family helpers"
+label var tot_hrswk_help "Hours of care per week from all helpers"
+label var tot_hrswk_paid "Hours of care per week from paid help"
+label var total_hours_week "Hours of care per week from primary CG (self-report NSOC)"
+
+//composite strain
+drop neg_no_routine
+egen cg_strain=rowtotal(*_lv* neg*)
+gen cg_strain_ind=inrange(cg_strain,5,9)
+label var cg_strain_ind "Caregiver strain 5+"
+label var cg_strain "Caregiver strain"
+
+keep if cg_primary_nsoc==1 | nsocm==1
+gen demw=wave if nsocm==3 & prob_dem==1
+gen sdemw=wave if nsocm==3 & sev_dem==1
+by spid, sort: egen fdem=min(demw)
+by spid: egen fsdem=min(sdem)
+gen pop=wave==fdem
+
+
+local round=1
+local cvars`round' age
+local ivars`round' female white educ_hs_ind
+local catvars`round' income_quart
+
+local round=`round'+1
+local cvars`round' income_adj
+local ivars`round' medicaid married
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' n_children
+local ivars`round' livealone res_care 
+local catvars`round' region
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round' metro_ind 
+local catvars`round'
+	
+local round=`round'+1
+local cvars`round' adlcount_jenny iadlcount_jenny sr_numconditions1
+local ivars`round' sr_hosp_ind
+local catvars`round' 
+	
+local round=`round'+1
+local cvars`round' cg_age
+local ivars`round' cg_female 
+local catvars`round' cg_relationship_cat
+di `round'
+local round=`round'+1
+local cvars`round' 
+local ivars`round' cg_srh_pf work_4_pay cg_respite
+local catvars`round' cg_dist_cat
+	
+local round=`round'+1
+local cvars`round' total_hours_week n_helpers tot_hrswk_help_i n_family_helpers tot_hrswk_inf n_paid_helpers tot_hrswk_paid_i
+local ivars`round' 
+local catvars`round'
+
+local round=`round'+1
+local cvars`round' cg_strain
+local ivars`round' cg_strain_ind diff_financial_lv_di diff_emotional_lv_di diff_physical_lv_di neg_exhausted_di neg_too_much_di neg_no_time_di
+local catvars`round'
+
+
+forvalues i=1/`round' {
+	foreach x of local catvars`i' {
+		di "`x'"
+		local `x'
+		levelsof `x', local(levels)
+		foreach l of local levels {
+			gen `x'`l'=`x'==`l' if !missing(`x')
+			local lab : label `x' `l'
+			label var `x'`l' "`lab'"
+			local `x' ``x'' `x'`l'
+}
+		di "``x''"
+		local cativars`i' `cativars`i'' ``x''
+		local catrowvars`i' `catrowvars`i'' `x' ``x''
+}
+}
+
+di "`catvars1'"
+di "`cativars1'"
+
+forvalues i=1/`round' {
+	foreach x of local cvars`i' {
+		local lab : var label `x'
+		label var `x' "`lab', Mean"
+		local crowsvars`i' `crowsvars`i'' `x' //Median //P_25 P_75
+}
+	local rows `rows' `crowsvars`i'' `ivars`i'' `catrowvars`i''
+}
+
+gen group1=1
+gen group2= n_paid==0
+gen group3=tot_hrswk_paid_i<=20 & group2==0
+gen group4=tot_hrswk_paid_i>20 & group2==0 & group3==0
+gen ind_20plus_paid=group2==1
+replace ind_20plus_paid=2 if group3==1
+replace ind_20plus_paid=3 if group4==1
+
+local rn : word count `rows' 1
+local title "Probable dementia"
+local replace replace
+
+foreach timethrough in 1 2 {
+mat tab=J(`rn',7,.)
+mat stars=J(`rn',7,0)
+local r=1
+local c=1
+
+forvalues y=1/4 {
+	sum pop if pop==1 & inlist(group`y',1) [aw=anfinw]
+	mat tab[`r',`c']=r(N)
+	local r=`r'+1
+	forvalues i=1/`round' {
+		*if inlist(`i',1,6) local r=`r'+1
+		di "r=`r'"
+		di "c=`c'"
+		foreach x of local cvars`i' {
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw], d
+			mat tab[`r',`c']=r(mean)
+			*mat tab [`r'+1,`c']=r(p50)
+			*mat tab[`r'+2,`c']=r(p25)
+			*mat tab[`r'+3,`c']=r(p75)
+			if "`y'"=="4" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				svy, subpop(if pop==1 & group`z'==0): reg `x' ind_20plus_paid
+				test ind_20plus_paid
+				mat tab[`r',`c'+`cc']=r(p)
+				mat stars[`r',`c'+`cc']=(r(p)<.05)+(r(p)<.01)
+				local cc=`cc'+1
+}
+}
+
+			local r=`r'+1
+			
+}
+		foreach x of local ivars`i' {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=11 mat tab[`r',`c']=r(mean)*100
+			if "`y'"=="4" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				if `z'==4 svy, subpop(if pop==1 & group`z'==0): tab `x' group2
+				else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+}
+			local r=`r'+1
+}
+		di "`catvars`i'"
+		foreach x of local catvars`i' {
+			if "`y'"=="4" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				if `z'==4 svy, subpop(if pop==1 & group`z'==0): tab `x' group2
+				else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+}
+			local r=`r'+1
+			foreach z of local `x' {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `z' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=11	mat tab[`r',`c']=r(mean)*100
+				local r=`r'+1
+
+}
+}
+}
+
+	local r=1
+	local c=`c'+1
+}
+
+mat rownames tab=N `rows' 
+
+frmttable using "${outpath}\table_1_`c(current_date)'.rtf", ///
+`replace' title("Sample Characteristics, `title'") varlabels sdec(2,2,3) statmat(tab) ///
+ctitles("" "Full Sample" "No Paid Care (A)" "<20hrs paid care (B)" ">20 hours (C)" "P-value: AtoB" "P-value: AtoC" "P-value: BtoC") ///
+annotate(stars) asymbol(*,**) note(Observation from first NSOC with dementia/severe dementia)
+
+local replace addtable
+local title Severe Dementia
+replace pop=wave==fsdem
+}
+
+
+
+H="table 1 4 cat"
+
+use "${nhats}\sp_round_1_8_public_sens_only.dta" if inlist(wave,1,5,7), clear
+gen income_adj=0
+replace income_adj= (240.007/224.939)*aveincome if wave==1
+replace income_adj= (240.007/229.594)*aveincome if wave==2
+replace income_adj= (240.007/232.957)*aveincome if wave==3
+replace income_adj= (240.007/236.736)*aveincome if wave==4
+replace income_adj= (240.007/237.017)*aveincome if wave==5
+//replace income_adj= (240.007/240.007)*aveincome if wave==6
+replace income_adj=income_adj/(240.007/237.017)
+label var income_adj "Income, 2015$"
+
+egen a1=rowtotal(toil_j dres_j bath_j meds_j bank_j)
+gen severe=a1==5
+gen sev_dem=severe==1 & prob_dem==1
+label var sev_dem "Severe dementia"
+
+svyset varunit [pw=anfinw], strat(varstrat)
+
+//merge 1:m spid wave using `nsoc'
+
+merge 1:m spid wave using "${nhats}\nsoc_round_1_7.dta", gen(nsocm) 
+drop cg_relationship_cat1
+tostring spid, gen(strspid)
+gen nsocid=strspid+opid
+sort nsocid wave
+foreach i in 1 5 7 {
+by nsocid: egen has`i'=max(wave==`i')
+}
+
+gen nsoc1and5=has1==1 & has5==1
+gen nsoc1and7=has1==1 & has7==1
+gen nsoc5and7=has5==1 & has7==1
+gen nsocall=has1==1 & has5==1 & has7==1
+/*
+tab1 nsoc* if prob_dem==1
+tab1 nsoc* if sev_dem==1
+tab1 nsoc*a* if prob_dem==1
+tab1 nsoc*a* if sev_dem==1
+*/
+gen tot_hrswk_inf=tot_hrswk_help_i-tot_hrswk_paid_i
+
+label var tot_hrswk_inf "Hours of care per week from all family helpers"
+label var tot_hrswk_help "Hours of care per week from all helpers"
+label var tot_hrswk_paid "Hours of care per week from paid help"
+label var total_hours_week "Hours of care per week from primary CG (self-report NSOC)"
+
+//composite strain
+drop neg_no_routine
+egen cg_strain=rowtotal(*_lv* neg*)
+gen cg_strain_ind=inrange(cg_strain,5,9)
+label var cg_strain_ind "Caregiver strain 5+"
+label var cg_strain "Caregiver strain"
+
+keep if cg_primary_nsoc==1 | nsocm==1
+gen demw=wave if nsocm==3 & prob_dem==1
+gen sdemw=wave if nsocm==3 & sev_dem==1
+by spid, sort: egen fdem=min(demw)
+by spid: egen fsdem=min(sdem)
+gen pop=wave==fdem
+
+
+local round=1
+local cvars`round' age
+local ivars`round' female white educ_hs_ind
+local catvars`round' income_quart
+
+local round=`round'+1
+local cvars`round' income_adj
+local ivars`round' medicaid married
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' n_children
+local ivars`round' livealone res_care 
+local catvars`round' region
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round' metro_ind 
+local catvars`round'
+	
+local round=`round'+1
+local cvars`round' adlcount_jenny iadlcount_jenny sr_numconditions1
+local ivars`round' sr_hosp_ind
+local catvars`round' 
+	
+local round=`round'+1
+local cvars`round' cg_age
+local ivars`round' cg_female 
+local catvars`round' cg_relationship_cat
+di `round'
+local round=`round'+1
+local cvars`round' 
+local ivars`round' cg_srh_pf work_4_pay cg_respite
+local catvars`round' cg_dist_cat
+	
+local round=`round'+1
+local cvars`round' total_hours_week n_helpers tot_hrswk_help_i n_family_helpers tot_hrswk_inf n_paid_helpers tot_hrswk_paid_i
+local ivars`round' 
+local catvars`round'
+
+local round=`round'+1
+local cvars`round' cg_strain
+local ivars`round' cg_strain_ind diff_financial_lv_di diff_emotional_lv_di diff_physical_lv_di neg_exhausted_di neg_too_much_di neg_no_time_di
+local catvars`round'
+
+
+forvalues i=1/`round' {
+	foreach x of local catvars`i' {
+		di "`x'"
+		local `x'
+		levelsof `x', local(levels)
+		foreach l of local levels {
+			gen `x'`l'=`x'==`l' if !missing(`x')
+			local lab : label `x' `l'
+			label var `x'`l' "`lab'"
+			local `x' ``x'' `x'`l'
+}
+		di "``x''"
+		local cativars`i' `cativars`i'' ``x''
+		local catrowvars`i' `catrowvars`i'' `x' ``x''
+}
+}
+
+di "`catvars1'"
+di "`cativars1'"
+
+forvalues i=1/`round' {
+	foreach x of local cvars`i' {
+		local lab : var label `x'
+		label var `x' "`lab', Mean"
+		local crowsvars`i' `crowsvars`i'' `x' //Median //P_25 P_75
+}
+	local rows `rows' `crowsvars`i'' `ivars`i'' `catrowvars`i''
+}
+
+gen group1=1
+gen group2= n_paid==0
+gen group3=tot_hrswk_paid_i<=20 & group2==0
+gen group4=inrange(tot_hrswk_paid_i,20.0000000001,40) & group2==0 & group3==0
+gen group5=tot_hrswk_paid_i>40 & group3==0 & group2==0
+gen ind_20plus_paid=group2==1
+replace ind_20plus_paid=2 if group3==1
+replace ind_20plus_paid=3 if group4==1
+replace ind_20plus_paid=4 if group5==1
+
+local rn : word count `rows' 1
+local title "Probable dementia"
+local replace replace
+
+foreach timethrough in 1 2 {
+mat tab=J(`rn',8,.)
+*mat tab2=J(`rn'6,.)
+mat stars=J(`rn',8,0)
+local r=1
+local c=1
+
+forvalues y=1/5 {
+	sum pop if pop==1 & inlist(group`y',1) [aw=anfinw]
+	mat tab[`r',`c']=r(N)
+	local r=`r'+1
+	forvalues i=1/`round' {
+		*if inlist(`i',1,6) local r=`r'+1
+		di "r=`r'"
+		di "c=`c'"
+		foreach x of local cvars`i' {
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw], d
+			mat tab[`r',`c']=r(mean)
+			*mat tab [`r'+1,`c']=r(p50)
+			*mat tab[`r'+2,`c']=r(p25)
+			*mat tab[`r'+3,`c']=r(p75)
+			if "`y'"!="2" {
+				local cc=1
+				*forvalues z=5(-1)2 {
+				svy, subpop(if pop==1 & (group`y'==1 | group2==1)): reg `x' ind_20plus_paid
+				test ind_20plus_paid
+				mat tab[`r',`c'+`cc']=r(p)
+				mat stars[`r',`c'+`cc']=(r(p)<.05)+(r(p)<.01)
+				*local cc=`cc'+1
+}
+*}
+
+			local r=`r'+1
+			
+}
+		foreach x of local ivars`i' {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=11 mat tab[`r',`c']=r(mean)*100
+			if "`y'"!="2" {
+				local cc=1
+				*forvalues z=4(-1)2 {
+				svy, subpop(if pop==1 & (group`y'==1 | group2==1)): tab `x' group2
+				*else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+*}
+			local r=`r'+1
+}
+		di "`catvars`i'"
+		foreach x of local catvars`i' {
+			if "`y'"=="4" {
+				local cc=1
+				*forvalues z=4(-1)2 {
+				svy, subpop(if pop==1 & (group`y'==1 | group2==1)): tab `x' group2
+				*else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+*}
+			local r=`r'+1
+			foreach z of local `x' {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `z' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=11	mat tab[`r',`c']=r(mean)*100
+				local r=`r'+1
+
+}
+}
+}
+
+	local r=1
+	local c=`c'+1
+	if `y'>2 local c=`c'+1
+}
+
+mat rownames tab=N `rows' 
+
+frmttable using "${outpath}\table_1_4_cat`c(current_date)'.rtf", ///
+`replace' title("Sample Characteristics, `title'") varlabels sdec(2,2,2,3,2,3,2,3) statmat(tab) ///
+ctitles("" "Full Sample" "No Paid Care (A)" "<20hrs paid care (B)" "P-value" ">20-40 hours (C)" "P-value" ">40 hours (D)" "P-value") ///
+annotate(stars) asymbol(*,**) note(Observation from first NSOC with dementia/severe dementia)
+
+local replace addtable
+local title Severe Dementia
+replace pop=wave==fsdem
+}
+
+
+
+H="table 1, 3 cat (0,<40,40+)"
+
+use "${nhats}\sp_round_1_8_public_sens_only.dta" if inlist(wave,1,5,7), clear
+gen income_adj=0
+replace income_adj= (240.007/224.939)*aveincome if wave==1
+replace income_adj= (240.007/229.594)*aveincome if wave==2
+replace income_adj= (240.007/232.957)*aveincome if wave==3
+replace income_adj= (240.007/236.736)*aveincome if wave==4
+replace income_adj= (240.007/237.017)*aveincome if wave==5
+//replace income_adj= (240.007/240.007)*aveincome if wave==6
+replace income_adj=income_adj/(240.007/237.017)
+label var income_adj "Income, 2015$"
+
+egen a1=rowtotal(toil_j dres_j bath_j meds_j bank_j)
+gen severe=a1==5
+gen sev_dem=severe==1 & prob_dem==1
+label var sev_dem "Severe dementia"
+
+svyset varunit [pw=anfinw], strat(varstrat)
+
+//merge 1:m spid wave using `nsoc'
+
+merge 1:m spid wave using "${nhats}\nsoc_round_1_7.dta", gen(nsocm) 
+drop cg_relationship_cat1
+tostring spid, gen(strspid)
+gen nsocid=strspid+opid
+sort nsocid wave
+foreach i in 1 5 7 {
+by nsocid: egen has`i'=max(wave==`i')
+}
+
+gen nsoc1and5=has1==1 & has5==1
+gen nsoc1and7=has1==1 & has7==1
+gen nsoc5and7=has5==1 & has7==1
+gen nsocall=has1==1 & has5==1 & has7==1
+/*
+tab1 nsoc* if prob_dem==1
+tab1 nsoc* if sev_dem==1
+tab1 nsoc*a* if prob_dem==1
+tab1 nsoc*a* if sev_dem==1
+*/
+
+merge 1:1 spid opid wave using "${nhats}\op_round_1_8.dta", gen(opm) keep(match master) keepusing(op_hrswk_i)
+
+gen tot_hrswk_inf=tot_hrswk_help_i-tot_hrswk_paid_i
+
+label var tot_hrswk_inf "Hours of care per week from all family helpers"
+label var tot_hrswk_help "Hours of care per week from all helpers"
+label var tot_hrswk_paid "Hours of care per week from paid help"
+label var total_hours_week "Hours of care per week from primary CG (self-report NSOC)"
+label var op_hrswk_i "Hours of care per week from primary CG (SP report NHATS)"
+label var any_paid_by_sp "SP self-pays for help"
+gen cg_kid=cg_relationship_cat==2
+label var cg_kid "CG is child/step/in-law"
+gen cg_resides=cg_dist_cat==1
+label var cg_resides "CG coresides with SP"
+
+//composite strain
+drop neg_no_routine
+egen cg_strain=rowtotal(*_lv* neg*)
+gen cg_strain_ind=inrange(cg_strain,5,9)
+label var cg_strain_ind "Caregiver strain 5+"
+label var cg_strain "Caregiver strain"
+
+keep if cg_primary_nsoc==1 | nsocm==1
+gen demw=wave if nsocm==3 & prob_dem==1
+gen sdemw=wave if nsocm==3 & sev_dem==1
+by spid, sort: egen fdem=min(demw)
+by spid: egen fsdem=min(sdem)
+gen pop=wave==fdem
+
+
+local round=1
+local cvars`round' age
+local ivars`round' female white educ_hs_ind
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' income_adj
+local ivars`round' 
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round' medicaid married
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' n_children adlcount_jenny iadlcount_jenny sr_numconditions1
+local ivars`round' sr_hosp_ind metro_ind
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round'  
+local catvars`round'
+	
+local round=`round'+1
+local cvars`round' 
+local ivars`round' 
+local catvars`round' 
+	
+local round=`round'+1
+local cvars`round' cg_age
+local ivars`round' cg_female cg_srh_pf work_4_pay cg_kid
+local catvars`round' 
+di `round'
+local round=`round'+1
+local cvars`round' 
+local ivars`round' cg_resides any_paid_by_sp
+local catvars`round' 
+	
+local round=`round'+1
+local cvars`round' total_hours_week op_hrswk_i n_helpers tot_hrswk_help_i n_family_helpers tot_hrswk_inf n_paid_helpers tot_hrswk_paid_i
+local ivars`round' 
+local catvars`round'
+
+local round=`round'+1
+local cvars`round' cg_strain
+local ivars`round' cg_strain_ind diff_financial_lv_di diff_emotional_lv_di diff_physical_lv_di neg_exhausted_di neg_too_much_di neg_no_time_di
+local catvars`round'
+
+
+forvalues i=1/`round' {
+	foreach x of local catvars`i' {
+		di "`x'"
+		local `x'
+		levelsof `x', local(levels)
+		foreach l of local levels {
+			gen `x'`l'=`x'==`l' if !missing(`x')
+			local lab : label `x' `l'
+			label var `x'`l' "`lab'"
+			local `x' ``x'' `x'`l'
+}
+		di "``x''"
+		local cativars`i' `cativars`i'' ``x''
+		local catrowvars`i' `catrowvars`i'' `x' ``x''
+}
+}
+
+di "`catvars1'"
+di "`cativars1'"
+
+forvalues i=1/`round' {
+	foreach x of local cvars`i' {
+		local lab : var label `x'
+		label var `x' "`lab', Mean"
+		local crowsvars`i' `crowsvars`i'' `x' //Median //P_25 P_75
+		if "`x'"=="income_adj" local crowsvars`i' `crowsvars`i'' Median
+}
+	local rows `rows' `crowsvars`i'' `ivars`i'' `catrowvars`i''
+}
+
+gen group1=1
+gen group2= n_paid==0
+gen group3=tot_hrswk_paid_i<40 & group2==0
+gen group4=tot_hrswk_paid_i>=40 & group2==0 & group3==0
+gen ind_20plus_paid=group2==1
+replace ind_20plus_paid=2 if group3==1
+replace ind_20plus_paid=3 if group4==1
+
+local rn : word count `rows' 1
+local title "Probable dementia"
+local replace replace
+replace pop=wave==fsdem
+
+foreach timethrough in 1  {
+mat tab=J(`rn',7,.)
+mat stars=J(`rn',7,0)
+local r=1
+local c=1
+
+forvalues y=1/4 {
+	sum pop if pop==1 & inlist(group`y',1) [aw=anfinw]
+	mat tab[`r',`c']=r(N)
+	local r=`r'+1
+	forvalues i=1/`round' {
+		*if inlist(`i',1,6) local r=`r'+1
+		di "r=`r'"
+		di "c=`c'"
+		foreach x of local cvars`i' {
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw], d
+			mat tab[`r',`c']=r(mean)
+			*mat tab[`r'+2,`c']=r(p25)
+			*mat tab[`r'+3,`c']=r(p75)
+			if "`y'"=="4" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				svy, subpop(if pop==1 & group`z'==0): reg `x' ind_20plus_paid
+				test ind_20plus_paid
+				mat tab[`r',`c'+`cc']=r(p)
+				mat stars[`r',`c'+`cc']=(r(p)<.05)+(r(p)<.01)
+				local cc=`cc'+1
+}			
+
+
+}
+			if "`x'"=="income_adj" {
+				sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw], d
+				mat tab [`r'+1,`c']=r(p50)
+				local r=`r'+1
+}
+			local r=`r'+1
+			
+}
+		foreach x of local ivars`i' {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=11 mat tab[`r',`c']=r(mean)*100
+			if "`y'"=="4" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				if `z'==4 svy, subpop(if pop==1 & group`z'==0): tab `x' group2
+				else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+}
+			local r=`r'+1
+}
+		di "`catvars`i'"
+		foreach x of local catvars`i' {
+			if "`y'"=="1" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				if `z'==4 svy, subpop(if pop==1 & group`z'==0): tab `x' group2
+				else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+}
+			local r=`r'+1
+			foreach z of local `x' {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `z' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=11	mat tab[`r',`c']=r(mean)*100
+				local r=`r'+1
+
+}
+}
+}
+
+	local r=1
+	local c=`c'+1
+}
+
+mat rownames tab=N `rows' 
+
+frmttable using "${outpath}\table_1_`c(current_date)'.rtf", ///
+`replace' title("Sample Characteristics, `title'") varlabels sdec(2,2,3) statmat(tab) ///
+ctitles("" "Full Sample" "No Paid Care (A)" "<40hrs paid care (B)" "40+ hours (C)" "P-value: AtoB" "P-value: AtoC" "P-value: BtoC") ///
+annotate(stars) asymbol(*,**) note(Observation from first NSOC with severe dementia) replace
+
+local replace addtable
+local title Severe Dementia
+replace pop=wave==fsdem
+}
+
+cd "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\output\in_progress"
+preserve
+
+gen nopaid=paidcat==1
+gen ptpaid=paidcat==2
+label var nopaid "No paid help"
+label var ptpaid "<40hrs paid help"
+
+gen ind_40plus_paid=paidcat==3
+label var ind_40plus_paid "40+ hrs of paid care"
+local xvars age female adlcount_jenny iadlcount_jenny medicaid 
+local xvars2 cg_female cg_resides cg_kid cg_srh_pf op_hrswk_i
+
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay replace
+
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay addtable
+	
+	qui svy, subpop(pop): logit cg_strain_ind nopaid ptpaid 
+	qui svy, subpop(pop): logit cg_strain_ind ib3.paidcat
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit cg_strain_ind nopaid ptpaid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind nopaid ptpaid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind nopaid ptpaid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+
+
+	outreg using cg_strain_regs_3cat, replay addtable
+
+	qui outreg, stats(b p) varlabels
+	qui svy, subpop(pop): reg cg_strain nopaid ptpaid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain nopaid ptpaid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	
+
+
+H="longitudinal, waves 5&7"
+
+use "${nhats}\sp_round_1_8.dta" if inlist(wave,5,7) & !lml, clear
+gen income_adj=0
+replace income_adj= (240.007/224.939)*aveincome if wave==1
+replace income_adj= (240.007/229.594)*aveincome if wave==2
+replace income_adj= (240.007/232.957)*aveincome if wave==3
+replace income_adj= (240.007/236.736)*aveincome if wave==4
+replace income_adj= (240.007/237.017)*aveincome if wave==5
+//replace income_adj= (240.007/240.007)*aveincome if wave==6
+replace income_adj=income_adj/(240.007/237.017)
+label var income_adj "Income, 2015$"
+
+egen a1=rowtotal(toil_j dres_j bath_j meds_j bank_j)
+gen severe=a1==5
+gen sev_dem=severe==1 & prob_dem==1
+label var sev_dem "Severe dementia"
+
+svyset varunit [pw=anfinw], strat(varstrat)
+
+//merge 1:m spid wave using `nsoc'
+
+merge 1:m spid wave using "D:\NHATS\Shared\base_data\NHATS cleaned\nsoc_round_1_7.dta", gen(nsocm) keep(match master)
+drop cg_relationship_cat1
+tostring spid, gen(strspid)
+gen nsocid=strspid+opid
+sort nsocid wave
+foreach i in 1 5 7 {
+by nsocid: egen has`i'=max(wave==`i')
+}
+
+gen nsoc1and5=has1==1 & has5==1
+gen nsoc1and7=has1==1 & has7==1
+gen nsoc5and7=has5==1 & has7==1
+gen nsocall=has1==1 & has5==1 & has7==1
+by nsocid: egen haslml=max(lml==1)
+
+/*
+tab1 nsoc* if prob_dem==1
+tab1 nsoc* if sev_dem==1
+tab1 nsoc*a* if prob_dem==1
+tab1 nsoc*a* if sev_dem==1
+*/
+gen tot_hrswk_inf=tot_hrswk_help_i-tot_hrswk_paid_i
+
+label var tot_hrswk_inf "Hours of care per week from all family helpers"
+label var tot_hrswk_help "Hours of care per week from all helpers"
+label var tot_hrswk_paid "Hours of care per week from paid help"
+label var total_hours_week "Hours of care per week from primary CG (self-report NSOC)"
+
+//composite strain
+drop neg_no_routine
+egen cg_strain=rowtotal(*_lv* neg*)
+gen cg_strain_ind=inrange(cg_strain,5,9)
+label var cg_strain_ind "Caregiver strain 5+"
+label var cg_strain "Caregiver strain"
+
+
+*keep if cg_primary_nsoc==1 | nsocm==1
+gen demw=wave if nsocm==3 & prob_dem==1
+gen sdemw=wave if nsocm==3 & sev_dem==1
+by spid, sort: egen fdem=min(demw)
+by spid: egen fsdem=min(sdem)
+gen pop=fdem==5 & nsoc5and7==1 & !haslml & wave==5
+
+//change in paid help--hours, helpers
+sort nsocid wave
+by nsocid: gen change_cat_1=ind_paid==0 & ind_paid[_n+1]==0
+by nsocid: replace change_cat_1=2 if ind_paid==0 & ind_paid[_n+1]==1
+by nsocid: replace change_cat_1=3 if ind_paid==1 & ind_paid[_n+1]==1
+by nsocid: replace change_cat_1=2 if ind_paid==1 & ind_paid[_n+1]==0
+label define change_cat_1 1 "No paid helper at either wave" 2 "No to yes" 3 "Paid help in both" 4 "Yes to no"
+label values change_cat_1 change_cat_1
+
+by nsocid: gen change_cat_2=ind_paid==0 & ind_paid[_n+1]==0
+by nsocid: replace change_cat_2=2 if n_paid< n_paid[_n+1]
+by nsocid: replace change_cat_2=3 if n_paid==n_paid[_n+1] & n_paid!=0
+by nsocid: replace change_cat_2=4 if n_paid>n_paid[_n+1]
+
+label define change_cat_2 1 "No paid helper at either wave" 2 "Fewer paid helpers in wave 5" 3 "Same (non-zero) paid helpers in both waves" 4 "Fewer in wave 7"
+label values change_cat_2 change_cat_2
+
+by nsocid: gen change_cat_3=1 if ind_paid==0 & ind_paid[_n+1]==0
+by nsocid: replace change_cat_3=2 if tot_hrswk_paid<tot_hrswk_paid[_n+1]
+*by nsocid: replace change_cat_3=3 if tot_hrswk_paid==tot_hrswk_paid[_n+1] & ind_paid!=0
+by nsocid: replace change_cat_3=4 if tot_hrswk_paid>tot_hrswk_paid[_n+1]
+label define change_cat_3 1 "No paid helper at either wave" 2 "Fewer hours of paid help in wave 5" 3 "Same (non-zero) hours" 4 "Fewer hours of paid help in wave 7"
+label values change_cat_3 change_cat_3
+
+forvalues i=2/3 {
+	replace change_cat_`i'=. if change_cat_`i'==1
+	
+tab1 change_cat_* if pop==1
+}
+
+local title Dementia
+foreach timethrough in 1 2 {
+	outreg, clear
+	forvalues i=1/3 {
+		svy, subpop(pop): reg cg_strain i.change_cat_`i' 
+		qui outreg, stats(b p) merge
+}
+	outreg, replay title("`title'")
+	local title Severe dementia
+	replace pop=0 if sev_dem==0
+}
+
+	
+
+
+
+H="cross-sectional model"
+
+use "${nhats}\sp_round_1_8.dta" if inlist(wave,1,5,7), clear
+gen income_adj=0
+replace income_adj= (240.007/224.939)*aveincome if wave==1
+replace income_adj= (240.007/229.594)*aveincome if wave==2
+replace income_adj= (240.007/232.957)*aveincome if wave==3
+replace income_adj= (240.007/236.736)*aveincome if wave==4
+replace income_adj= (240.007/237.017)*aveincome if wave==5
+//replace income_adj= (240.007/240.007)*aveincome if wave==6
+replace income_adj=income_adj/(240.007/237.017)
+label var income_adj "Income, 2015$"
+
+egen a1=rowtotal(toil_j dres_j bath_j meds_j bank_j)
+gen severe=a1==5
+gen sev_dem=severe==1 & prob_dem==1
+label var sev_dem "Severe dementia"
+
+qui svyset varunit [pw=anfinw], strat(varstrat)
+
+//merge 1:m spid wave using `nsoc'
+
+merge 1:m spid wave using "D:\NHATS\Shared\base_data\NHATS cleaned\nsoc_round_1_7.dta", gen(nsocm) 
+drop cg_relationship_cat1
+tostring spid, gen(strspid)
+gen nsocid=strspid+opid
+sort nsocid wave
+foreach i in 1 5 7 {
+by nsocid: egen has`i'=max(wave==`i')
+}
+
+gen nsoc1and5=has1==1 & has5==1
+gen nsoc1and7=has1==1 & has7==1
+gen nsoc5and7=has5==1 & has7==1
+gen nsocall=has1==1 & has5==1 & has7==1
+/*
+tab1 nsoc* if prob_dem==1
+tab1 nsoc* if sev_dem==1
+tab1 nsoc*a* if prob_dem==1
+tab1 nsoc*a* if sev_dem==1
+*/
+gen tot_hrswk_inf=tot_hrswk_help_i-tot_hrswk_paid_i
+
+label var tot_hrswk_inf "Hours of care per week from all family helpers"
+label var tot_hrswk_help "Hours of care per week from all helpers"
+label var tot_hrswk_paid "Hours of care per week from paid help"
+label var total_hours_week "Hours of care per week from primary CG (self-report NSOC)"
+
+//composite strain
+drop neg_no_routine
+egen cg_strain=rowtotal(*_lv* neg*)
+gen cg_strain_ind=inrange(cg_strain,5,9)
+label var cg_strain_ind "Caregiver strain 5+"
+label var cg_strain "Caregiver strain"
+
+keep if cg_primary_nsoc==1 | nsocm==1
+gen demw=wave if nsocm==3 & prob_dem==1
+gen sdemw=wave if nsocm==3 & sev_dem==1
+by spid, sort: egen fdem=min(demw)
+by spid: egen fsdem=min(sdem)
+gen pop=wave==fdem
+
+//indicator for ADLs/IADLs with Jenny's definitions
+foreach x in "" i {
+	gen `x'adl_imp_j=`x'adlcount_jenny>=1
+}
+label var adl_imp_j "Impairment in 1+ ADLs"
+label var iadl_imp_j "Impairment in 1+ IADLs"
+
+gen ind_20plus_paid=tot_hrswk_paid_i>=20
+replace ind_20plus_paid=. if tot_hrswk_paid_i>0 & tot_hrswk_paid_i<20
+
+local xvars age female adlcount_jenny iadlcount_jenny i.cg_dist_cat total_hours_week
+
+replace pop=0 if missing(ind_20plus_paid)
+
+local title "Dementia"
+
+preserve 
+foreach timethrough in 1 2 {
+	qui hist cg_strain if pop, width(1)
+
+	qui svy, subpop(pop): qui reg cg_strain ind_20plus_paid
+	qui outreg, stats(b p)
+	qui svy, subpop(pop): qui reg cg_strain ind_20plus_paid `xvars'
+	qui outreg, merge stats(b p)
+	qui svy, subpop(pop): qui logit cg_strain_ind ind_20plus_paid
+	qui outreg, merge stats(e_b p)
+	qui svy, subpop(pop): qui logit cg_strain_ind ind_20plus_paid `xvars'
+	qui outreg, merge stats(e_b p) sdec(3)
+	
+	outreg, replay title("`title'")
+	qui replace pop=0 if !sev_dem
+	local title "Severe dementia"
+}
+
+
+restore
+
+foreach timethrough in 1 2 {
+
+
+	svy, subpop(pop): reg cg_strain ind_20plus_paid
+	svy, subpop(pop): reg cg_strain ind_20plus_paid `xvars'
+	svy, subpop(pop): logit cg_strain_ind ind_20plus_paid
+	svy, subpop(pop): logit cg_strain_ind ind_20plus_paid `xvars'
+	
+	replace pop=0 if !sev_dem
+	local title "Severe dementia"
+}
+
+H="new model"
+version 15
+
+use "${nhats}\sp_round_1_8_public_sens_only.dta" if inlist(wave,1,5,7), clear
+gen income_adj=0
+replace income_adj= (240.007/224.939)*aveincome if wave==1
+replace income_adj= (240.007/229.594)*aveincome if wave==2
+replace income_adj= (240.007/232.957)*aveincome if wave==3
+replace income_adj= (240.007/236.736)*aveincome if wave==4
+replace income_adj= (240.007/237.017)*aveincome if wave==5
+//replace income_adj= (240.007/240.007)*aveincome if wave==6
+replace income_adj=income_adj/(240.007/237.017)
+label var income_adj "Income, 2015$"
+
+egen a1=rowtotal(toil_j dres_j bath_j meds_j bank_j)
+gen severe=a1==5
+gen sev_dem=severe==1 & prob_dem==1
+label var sev_dem "Severe dementia"
+
+qui svyset varunit [pw=anfinw], strat(varstrat)
+
+//merge 1:m spid wave using `nsoc'
+
+merge 1:m spid wave using "${nhats}\nsoc_round_1_7.dta", gen(nsocm) 
+drop cg_relationship_cat1
+tostring spid, gen(strspid)
+gen nsocid=strspid+opid
+sort nsocid wave
+foreach i in 1 5 7 {
+by nsocid: egen has`i'=max(wave==`i')
+}
+
+gen nsoc1and5=has1==1 & has5==1
+gen nsoc1and7=has1==1 & has7==1
+gen nsoc5and7=has5==1 & has7==1
+gen nsocall=has1==1 & has5==1 & has7==1
+/*
+tab1 nsoc* if prob_dem==1
+tab1 nsoc* if sev_dem==1
+tab1 nsoc*a* if prob_dem==1
+tab1 nsoc*a* if sev_dem==1
+*/
+gen tot_hrswk_inf=tot_hrswk_help_i-tot_hrswk_paid_i
+
+label var tot_hrswk_inf "Hours of care per week from all family helpers"
+label var tot_hrswk_help "Hours of care per week from all helpers"
+label var tot_hrswk_paid "Hours of care per week from paid help"
+label var total_hours_week "Hours of care per week from primary CG (self-report NSOC)"
+
+//composite strain
+drop neg_no_routine
+egen cg_strain=rowtotal(*_lv* neg*)
+gen cg_strain_ind=inrange(cg_strain,5,9)
+label var cg_strain_ind "Caregiver strain 5+"
+label var cg_strain "Caregiver strain"
+
+keep if cg_primary_nsoc==1 | nsocm==1
+gen demw=wave if nsocm==3 & prob_dem==1
+gen sdemw=wave if nsocm==3 & sev_dem==1
+by spid, sort: egen fdem=min(demw)
+by spid: egen fsdem=min(sdem)
+gen pop=wave==fdem
+
+//indicator for ADLs/IADLs with Jenny's definitions
+foreach x in "" i {
+	gen `x'adl_imp_j=`x'adlcount_jenny>=1
+}
+label var adl_imp_j "Impairment in 1+ ADLs"
+label var iadl_imp_j "Impairment in 1+ IADLs"
+
+gen ind_20plus_paid=tot_hrswk_paid_i>=20
+replace ind_20plus_paid=. if tot_hrswk_paid_i>0 & tot_hrswk_paid_i<20
+
+local xvars age female adlcount_jenny iadlcount_jenny i.cg_dist_cat total_hours_week
+
+replace pop=0 if missing(ind_20plus_paid)
+
+local title "Dementia"
+
+preserve 
+foreach timethrough in 1 2 {
+	qui hist cg_strain if pop, width(1)
+
+	qui svy, subpop(pop): qui reg cg_strain ind_20plus_paid
+	qui outreg, stats(b p)
+	qui svy, subpop(pop): qui reg cg_strain ind_20plus_paid `xvars'
+	qui outreg, merge stats(b p)
+	/*qui svy, subpop(pop): qui logit cg_strain_ind ind_20plus_paid
+	qui outreg, merge stats(e_b p)
+	qui svy, subpop(pop): qui logit cg_strain_ind ind_20plus_paid `xvars'
+	qui outreg, merge stats(e_b p)*/
+	
+	outreg, replay title("`title'")
+	qui replace pop=0 if !sev_dem
+	local title "Severe dementia"
+}
+restore
+cd "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\output\in_progress"
+
+gen ind_40plus_paid=paidcat==3
+label var ind_40plus_paid "40+ hrs of paid care"
+local xvars age female adlcount_jenny iadlcount_jenny i.cg_dist_cat total_hours_week 
+local xvars2 `xvars' cg_female i.cg_relationship_cat
+	qui svy, subpop(pop): reg cg_strain ib3.paidcat
+	qui outreg, stats(b p) varlabels
+	qui svy, subpop(pop): reg cg_strain ib3.paidcat `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ib3.paidcat `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay replace
+	qui svy, subpop(pop): logit cg_strain_ind ib3.paidcat
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit cg_strain_ind ib3.paidcat `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ib3.paidcat `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay addtable
+	
+foreach timethrough in 1 2 {
+
+
+	svy, subpop(pop): reg cg_strain ind_20plus_paid
+	svy, subpop(pop): reg cg_strain ind_20plus_paid `xvars'
+	svy, subpop(pop): logit cg_strain_ind ind_20plus_paid
+	svy, subpop(pop): logit cg_strain_ind ind_20plus_paid `xvars'
+	
+	replace pop=0 if !sev_dem
+	local title "Severe dementia"
+}
+
+H="create dataset"
+
+use "${nhats}\sp_round_1_8_public_sens_only.dta" if inlist(wave,1,5,7), clear
+gen income_adj=0
+replace income_adj= (240.007/224.939)*aveincome if wave==1
+replace income_adj= (240.007/229.594)*aveincome if wave==2
+replace income_adj= (240.007/232.957)*aveincome if wave==3
+replace income_adj= (240.007/236.736)*aveincome if wave==4
+replace income_adj= (240.007/237.017)*aveincome if wave==5
+//replace income_adj= (240.007/240.007)*aveincome if wave==6
+replace income_adj=income_adj/(240.007/237.017)
+label var income_adj "Income, 2015$"
+
+egen a1=rowtotal(toil_j dres_j bath_j meds_j bank_j)
+gen severe=a1==5
+gen sev_dem=severe==1 & prob_dem==1
+label var sev_dem "Severe dementia"
+
+svyset varunit [pw=anfinw], strat(varstrat)
+
+//merge 1:m spid wave using `nsoc'
+
+merge 1:m spid wave using "${nhats}\nsoc_round_1_7.dta", gen(nsocm) 
+drop cg_relationship_cat1
+tostring spid, gen(strspid)
+gen nsocid=strspid+opid
+sort nsocid wave
+foreach i in 1 5 7 {
+by nsocid: egen has`i'=max(wave==`i')
+}
+
+gen nsoc1and5=has1==1 & has5==1
+gen nsoc1and7=has1==1 & has7==1
+gen nsoc5and7=has5==1 & has7==1
+gen nsocall=has1==1 & has5==1 & has7==1
+/*
+tab1 nsoc* if prob_dem==1
+tab1 nsoc* if sev_dem==1
+tab1 nsoc*a* if prob_dem==1
+tab1 nsoc*a* if sev_dem==1
+*/
+
+merge 1:1 spid opid wave using "${nhats}\op_round_1_8.dta", gen(opm) keep(match master) keepusing(op_hrswk_i)
+
+gen tot_hrswk_inf=tot_hrswk_help_i-tot_hrswk_paid_i
+
+label var tot_hrswk_inf "Hours of care per week from all family helpers"
+label var tot_hrswk_help "Hours of care per week from all helpers"
+label var tot_hrswk_paid "Hours of care per week from paid help"
+label var total_hours_week "Hours of care per week from primary CG (self-report NSOC)"
+label var op_hrswk_i "Hours of care per week from primary CG (SP report NHATS)"
+label var any_paid_by_sp "SP self-pays for help"
+gen cg_kid=cg_relationship_cat==2
+label var cg_kid "CG is child/step/in-law"
+gen cg_resides=cg_dist_cat==1
+label var cg_resides "CG coresides with SP"
+
+//composite strain
+drop neg_no_routine
+egen cg_strain=rowtotal(*_lv* neg*)
+gen cg_strain_ind=inrange(cg_strain,5,9)
+label var cg_strain_ind "Caregiver strain 5+"
+label var cg_strain "Caregiver strain"
+
+keep if cg_primary_nsoc==1 | nsocm==1
+gen demw=wave if nsocm==3 & prob_dem==1
+gen sdemw=wave if nsocm==3 & sev_dem==1
+by spid, sort: egen fdem=min(demw)
+by spid: egen fsdem=min(sdem)
+gen pop=wave==fsdem
+
+tempfile t1
+save `t1'
+
+foreach i in 1 5 7 {
+	use spid opid op`i'proxy using "${nhats}\raw\opround`i'.dta", clear
+	merge 1:1 spid opid using "${nhats}\raw\NSOC`i'.dta", keep(match) keepusing(cpp`i'hlpkpt*) nogen
+	rename op*proxy cg_proxy
+	foreach x in vs rl go wk vo ca {
+		gen ind_kept_`x'=cpp`i'hlpkpt`x'==1 if cpp`i'hlpkpt`x'>0
+
+}
+	label var ind_kept_vs "Kept from visiting"
+	label var ind_kept_rl "Kept from religious services"
+	label var ind_kept_go "Kept from going out"
+	label var ind_kept_wk "Kept from working"
+	label var ind_kept_vo "Kept from volunteering"
+	label var ind_kept_ca "Kept from providing care"
+	egen ind_kept_any=rowmax(ind_kept_*)
+	label var ind_kept_any "Kept from any activity"
+	drop cpp*
+	gen wave=`i'
+	tempfile op`i'
+	save `op`i''
+}
+
+foreach i in  1 5 7 {
+append using `op`i''
+}
+replace cg_proxy=0 if cg_proxy==-1
+label var cg_proxy "CG was proxy for NHATS interview in same wave"
+duplicates drop
+tempfile t2
+save `t2'
+
+use `t1'
+merge 1:1 spid opid wave using `t2', keep(match master) nogen
+
+gen proxycat=1 if !proxy
+replace proxycat=2 if proxy_ivw & !cg_proxy
+replace proxycat=3 if cg_proxy
+label define proxycat 1 "No proxy" 2 "CG not proxy" 3 "CG was proxy"
+label values proxycat proxycat
+gen ind_40plus_paid=tot_hrswk_paid>40 & !missing(tot_hrswk_paid)
+
+gen dif=op_hrswk_i-total_hours_week
+mean dif
+
+tab proxycat if pop
+mean dif if pop
+mean dif if pop, over(proxycat)
+
+forvalues i=1/4 {
+	gen t`i'=.
+}
+
+label var t1 "Caregiving difficulty"
+label var t2 "Role overload"
+label var t3 "Impact of providing care"
+label var t4 "Caregiving relationships"
+
+foreach x of varlist cg_proxy op_hrswk_i total_hours_week t1 *lv_di t2 neg* t3 ind_kept* cg_srh_pf t4 gain* {
+	local ivars `ivars' `x'
+}
+
+local r=1
+local c=1
+
+local rn : word count `ivars'
+
+mat tab=J(`rn',4,.)
+mat stars=J(`rn',4,0)
+
+foreach g in "0,1" 0 1 {
+	foreach x of local ivars {
+		if !inlist("`x'","t1","t2","t3","t4") {	
+			sum `x' if inlist(ind_40plus,`g') & pop==1 [aw=anfinwgt]
+			if inlist("`x'","op_hrswk_i","total_hours_week") {
+				mat tab[`r',`c']=r(mean)
+				if "`g'"=="1" {
+					svy, subpop(pop): reg `x' ind_40plus
+					test ind_40plus
+					mat tab[`r',`c'+1]=r(p)
+					mat stars[`r',`c'+1]=(r(p)<.05+r(p)<.01)
+}
+}
+			else {
+				mat tab[`r',`c']=r(mean)*100
+				if "`g'"=="1" {
+					svy, subpop(pop): tab `x' ind_40plus
+					mat tab[`r',`c'+1]=e(p_Pear)
+					mat stars[`r',`c'+1]=(e(p_Pear)<.05+e(p_Pear)<.01)
+}
+}
+}
+		local r=`r'+1
+}
+	local c=`c'+1
+	local r=1
+}
+
+mat rownames tab=`ivars'
+
+frmttable using "${outpath}\multidimensional_impact_2cat.rtf", statmat(tab) ctitles("" "Full" "<40h rs" "40+ hrs" "P") varlabels sdec(2,2,2,3) replace
+
+save "${datapath}\sev_dem_cg_strain.dta", replace
+
+
+
+H="table and regressions including mi"
+
+use "${nhats}\sp_round_1_8_public_sens_only.dta" if inlist(wave,1,5,7), clear
+gen income_adj=aveincome if wave==7
+replace income_adj= (240.007/224.939)*aveincome if wave==1
+replace income_adj= (240.007/229.594)*aveincome if wave==2
+replace income_adj= (240.007/232.957)*aveincome if wave==3
+replace income_adj= (240.007/236.736)*aveincome if wave==4
+replace income_adj= (240.007/237.017)*aveincome if wave==5
+//replace income_adj= (240.007/240.007)*aveincome if wave==6
+replace income_adj=income_adj/(240.007/237.017)
+label var income_adj "Income, 2015$"
+
+gen imp=aveincome==imputed_inc1
+forvalues i=1/5 {
+replace imputed_inc`i'=aveincome if missing(imputed_inc`i')
+
+replace imputed_inc`i'= (240.007/224.939)*imputed_inc`i' if wave==1
+replace imputed_inc`i'= (240.007/229.594)*imputed_inc`i' if wave==2
+replace imputed_inc`i'= (240.007/232.957)*imputed_inc`i' if wave==3
+replace imputed_inc`i'= (240.007/236.736)*imputed_inc`i' if wave==4
+replace imputed_inc`i'= (240.007/237.017)*imputed_inc`i' if wave==5
+//replace imputed_inc`i'= (240.007/240.007)*imputed_inc`i' if wave==6
+replace imputed_inc`i'=imputed_inc`i'/(240.007/237.017)
+
+}
+
+gen inc=income_adj if !imp
+
+egen a1=rowtotal(toil_j dres_j bath_j meds_j bank_j)
+gen severe=a1==5
+*gen sev_dem=severe==1 & prob_dem==1
+label var sev_dem "Severe dementia"
+
+
+//merge 1:m spid wave using `nsoc'
+
+merge 1:m spid wave using "${nhats}\nsoc_round_1_7.dta", gen(nsocm) 
+drop cg_relationship_cat1
+tostring spid, gen(strspid)
+gen nsocid=strspid+opid
+sort nsocid wave
+foreach i in 1 5 7 {
+by nsocid: egen has`i'=max(wave==`i')
+}
+svyset varunit [pw=anfinw], strat(varstrat)
+
+gen nsoc1and5=has1==1 & has5==1
+gen nsoc1and7=has1==1 & has7==1
+gen nsoc5and7=has5==1 & has7==1
+gen nsocall=has1==1 & has5==1 & has7==1
+/*
+tab1 nsoc* if prob_dem==1
+tab1 nsoc* if sev_dem==1
+tab1 nsoc*a* if prob_dem==1
+tab1 nsoc*a* if sev_dem==1
+*/
+
+merge 1:1 spid opid wave using "${nhats}\op_round_1_8.dta", gen(opm) keep(match master) keepusing(op_hrswk_i)
+
+gen tot_hrswk_inf=tot_hrswk_help_i-tot_hrswk_paid_i
+
+label var tot_hrswk_inf "Hours of care per week from all family helpers"
+label var tot_hrswk_help "Hours of care per week from all helpers"
+label var tot_hrswk_paid "Hours of care per week from paid help"
+label var total_hours_week "Hours of care per week from primary CG (self-report NSOC)"
+label var op_hrswk_i "Hours of care per week from primary CG (SP report NHATS)"
+label var any_paid_by_sp "SP self-pays for help"
+gen cg_kid=cg_relationship_cat==2
+label var cg_kid "CG is child/step/in-law"
+gen cg_resides=cg_dist_cat==1 if !missing(cg_dist_cat)
+label var cg_resides "CG coresides with SP"
+
+
+foreach x in financial emotional physical {
+	gen `x'_cat=diff_`x'_lv+1
+	replace `x'_cat=3 if diff_`x'_lv_di==1
+	label define `x'_cat 1 "None" 2 "Some (1-3)" 3 "A lot (4/5)"
+	label values `x'_cat `x'_cat
+}
+label var financial_cat "Financial difficulty from help"
+label var emotional_cat "Emotional difficulty from help"
+label var physical_cat "Physical difficulty from help"
+
+//composite strain
+drop neg_no_routine
+egen cg_strain=rowtotal(*_lv* neg*)
+gen cg_strain_ind=inrange(cg_strain,5,9)
+label var cg_strain_ind "Caregiver strain 5+"
+label var cg_strain "Caregiver strain"
+
+keep if cg_primary_nsoc==1 | nsocm==1
+gen demw=wave if nsocm==3 & prob_dem==1
+gen sdemw=wave if nsocm==3 & sev_dem==1
+by spid, sort: egen fdem=min(demw)
+by spid: egen fsdem=min(sdem)
+gen pop=wave==fsdem
+tempfile t1
+save `t1'
+
+
+foreach i in 1 5 7 {
+	use spid opid op`i'proxy using "${nhats}\raw\opround`i'.dta", clear
+	merge 1:1 spid opid using "${nhats}\raw\NSOC`i'.dta", keep(match) keepusing(c*p`i'hlpkpt*) nogen
+	rename op*proxy cg_proxy
+	if `i'==1 rename ccp* cpp*
+	foreach x in vs rl go wk vo ca gr {
+		gen ind_kept_`x'=cpp`i'hlpkpt`x'==1 if cpp`i'hlpkpt`x'>0
+
+}
+	label var ind_kept_vs "Kept from visiting"
+	label var ind_kept_rl "Kept from religious services"
+	label var ind_kept_go "Kept from going out"
+	label var ind_kept_wk "Kept from working"
+	label var ind_kept_vo "Kept from volunteering"
+	label var ind_kept_ca "Kept from providing care"
+	label var ind_kept_gr "Kept from group activity"
+	egen ind_kept_any=rowmax(ind_kept_*)
+	label var ind_kept_any "Kept from any activity"
+	drop cpp*
+	gen wave=`i'
+	tempfile op`i'
+	save `op`i''
+}
+
+foreach i in  1 5 7 {
+append using `op`i''
+}
+replace cg_proxy=0 if cg_proxy==-1
+label var cg_proxy "CG was proxy for NHATS interview in same wave"
+duplicates drop
+tempfile t2
+save `t2'
+
+use `t1'
+merge 1:1 spid opid wave using `t2', keep(match master) nogen
+
+forvalues i=0/4 {
+	gen t`i'=.
+}
+
+local t0 "Caregiver wellbeing"
+label var t1 "Caregiving difficulty"
+label var t2 "Role overload"
+label var t3 "Impact of providing care"
+label var t4 "Caregiving relationships"
+
+
+foreach x of varlist  t2 neg* t3 ind_kept* cg_srh_pf t4 gain* {
+	local ivars `ivars' `x'
+}
+
+
+local round=1
+local cvars`round' age
+local ivars`round' female white educ_hs_ind
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' income_adj
+local ivars`round' 
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round' medicaid married
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' n_children adlcount_jenny iadlcount_jenny sr_numconditions1
+local ivars`round' sr_hosp_ind metro_ind
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round'  
+local catvars`round'
+	
+local round=`round'+1
+local cvars`round' 
+local ivars`round' 
+local catvars`round' 
+	
+local round=`round'+1
+local cvars`round' cg_age
+local ivars`round' cg_female work_4_pay cg_kid
+local catvars`round' 
+di `round'
+local round=`round'+1
+local cvars`round' 
+local ivars`round' cg_resides any_paid_by_sp
+local catvars`round' 
+	
+local round=`round'+1
+local cvars`round' total_hours_week op_hrswk_i n_helpers tot_hrswk_help_i n_family_helpers tot_hrswk_inf n_paid_helpers tot_hrswk_paid_i
+local ivars`round' t0
+local catvars`round'
+
+local round=`round'+1
+local cvars`round'  cg_strain
+local ivars`round' cg_strain_ind t1 diff_financial_lv diff_emotional_lv diff_physical_lv
+local catvars`round' //financial_cat emotional_cat physical_cat
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round' `ivars' 
+local catvars`round' 
+
+
+
+forvalues i=1/`round' {
+	foreach x of local catvars`i' {
+		di "`x'"
+		local `x'
+		levelsof `x', local(levels)
+		foreach l of local levels {
+			gen `x'`l'=`x'==`l' if !missing(`x')
+			local lab : label `x' `l'
+			label var `x'`l' "`lab'"
+			local `x' ``x'' `x'`l'
+}
+		di "``x''"
+		local cativars`i' `cativars`i'' ``x''
+		local catrowvars`i' `catrowvars`i'' `x' ``x''
+}
+}
+
+di "`catvars1'"
+di "`cativars1'"
+
+forvalues i=1/`round' {
+	foreach x of local cvars`i' {
+		local lab : var label `x'
+		label var `x' "`lab', Mean"
+		local crowsvars`i' `crowsvars`i'' `x' Median SD //P_25 P_75
+		*if inlist("`x'","income_adj","tot_hrswk_help_i","tot_hrswk_paid_i", "total_hours_week") local crowsvars`i' `crowsvars`i'' Median
+}
+	local rows `rows' `crowsvars`i'' `ivars`i'' `catrowvars`i''
+}
+
+gen group1=1
+gen group2= n_paid==0
+gen group3=tot_hrswk_paid_i<40 & group2==0
+gen group4=tot_hrswk_paid_i>=40 & group2==0 & group3==0
+gen paidcat=group2==1
+replace paidcat=2 if group3==1
+replace paidcat=3 if group4==1
+
+local rn : word count `rows' 1
+local title "Probable dementia"
+local replace replace
+*replace pop=wave==fsdem
+
+foreach timethrough in 1  2 {
+mat tab=J(`rn',7,.)
+mat stars=J(`rn',7,0)
+local r=1
+local c=1
+
+forvalues y=1/4 {
+	sum pop if pop==1 & inlist(group`y',1) [aw=anfinw]
+	mat tab[`r',`c']=r(N)
+	local r=`r'+1
+	forvalues i=1/`round' {
+		*if inlist(`i',1,6) local r=`r'+1
+		di "r=`r'"
+		di "c=`c'"
+		foreach x of local cvars`i' {
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw], d
+			mat tab[`r',`c']=r(mean)
+			mat tab[`r'+1,`c']=r(p50)
+			mat tab[`r'+2,`c']=r(sd)
+			if "`y'"=="4" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				svy, subpop(if pop==1 & group`z'==0): reg `x' paidcat
+				test paidcat
+				mat tab[`r',`c'+`cc']=r(p)
+				mat stars[`r',`c'+`cc']=(r(p)<.05)+(r(p)<.01)
+				local cc=`cc'+1
+}			
+
+
+}
+			/*if inlist("`x'","income_adj","tot_hrswk_help_i","tot_hrswk_paid_i", "total_hours_week") {
+				sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw], d
+				mat tab [`r'+1,`c']=r(p50)
+				local r=`r'+1
+}*/
+			local r=`r'+3
+			
+}
+		foreach x of local ivars`i' {
+			if !inlist("`x'","t0","t1","t2","t3","t4") {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=11 mat tab[`r',`c']=r(mean)*100
+			if "`y'"=="4" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				if `z'==4 svy, subpop(if pop==1 & group`z'==0): tab `x' group2
+				else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+}
+}
+			local r=`r'+1
+}
+		di "`catvars`i'"
+		foreach x of local catvars`i' {
+			if "`y'"=="1" {
+				local cc=4
+				forvalues z=4(-1)2 {
+				if `z'==4 svy, subpop(if pop==1 & group`z'==0): tab `x' group2
+				else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+}
+			local r=`r'+1
+			foreach z of local `x' {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `z' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=5	mat tab[`r',`c']=r(mean)*100
+				local r=`r'+1
+
+}
+}
+}
+
+	local r=1
+	local c=`c'+1
+}
+
+mat rownames tab=N `rows' 
+
+frmttable using "${outpath}\table_1_`c(current_date)'_cg.rtf", ///
+`replace' title("Sample Characteristics, `title'") varlabels sdec(2,2,2,2,3) statmat(tab) ///
+ctitles("" "Full Sample" "No Paid Care (A)" "<40hrs paid care (B)" "40+ hours (C)" "P-value: AtoB" "P-value: AtoC" "P-value: BtoC") ///
+annotate(stars) asymbol(*,**) note(Observation from first NSOC with severe dementia) 
+
+local replace addtable
+local title Severe Dementia
+replace pop=wave==fsdem
+}
+
+cd "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\output\in_progress"
+preserve
+
+gen nopaid=!tot_hrswk_paid
+gen ptpaid=inrange(tot_hrswk_paid,0.001,39.999)
+label var nopaid "No paid help"
+label var ptpaid "<40hrs paid help"
+
+gen ind_40plus_paid=tot_hrswk_paid>=40
+label var ind_40plus_paid "40+ hrs of paid care"
+local xvars age female adlcount_jenny iadlcount_jenny medicaid 
+local xvars2 cg_age cg_female cg_resides cg_kid total_hours_week
+
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat_cgwt, replay replace
+
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels 
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat_cgwt, replay addtable
+	
+	qui svy, subpop(pop): logit cg_strain_ind nopaid ptpaid 
+	qui svy, subpop(pop): logit cg_strain_ind nopaid ptpaid
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit cg_strain_ind nopaid ptpaid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind nopaid ptpaid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+svy, subpop(pop): logit cg_strain_ind nopaid ptpaid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+
+
+	outreg using cg_strain_regs_3cat_cgwt, replay addtable
+
+	qui outreg, stats(b p) varlabels
+	qui svy, subpop(pop): reg cg_strain nopaid ptpaid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain nopaid ptpaid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	
+drop if lml | !sp_ivw	
+mi set wide
+mi register imputed medicaid cg_age cg_resides total_hours_week
+mi impute chained (logit) medicaid (logit) cg_resides (regress) cg_age (regress) total_hours_week = age income_quart hhm cg_relationship_cat op_hrswk_i if !missing(cg_relationship_cat), add(5)
+mi estimate: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	
+
+	
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat_cgwt_mi, replay replace
+
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat_cgwt_mi, replay addtable
+	
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind nopaid ptpaid 
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind nopaid ptpaid
+	qui outreg, stats(e_b p) varlabels 
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind nopaid ptpaid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind nopaid ptpaid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind nopaid ptpaid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+
+
+	outreg using cg_strain_regs_3cat_cgwt_mi, replay addtable
+
+
+
+H="***************************"
+
+
+H="TG R&R, incorporating NHATS technical guidance"
+
+
+H="set globals"
+/* 
+********************HEADING******************** 
+
+Project Name: Adverse Consequences of Unmet Need among Probable Dementia Patients
+
+Date Started: 1/7/20
+
+Primary Investigator: Jenny Reckrey
+Funding Source: GEMSSTAR
+
+Created by: EBL
+
+Primary Analyst: EBL
+Secondary Analyst: MH
+
+Datasets Used: nhats
+
+
+*/
+ 
+//STATA
+// Global Macros use $ symbol to be called. 
+
+//Clean NHATS 
+global nhats "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\base_data"
+
+//Intermediate Data Path
+global intpath "D:\nhats\Projects\caregiving\jr_dem_paid_cgs_and_cg_strain\data\int_data"
+
+// Final Data Path
+global datapath "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\"
+
+//Log files path
+global logpath "D:\NHATS\Projects\caregiving\jr_dem_paid_cgs_and_cg_strain\output\logs"
+
+//Log files path
+global outpath "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\output\in_progress"
+
+H="sample derivation"
+foreach i in 1 5 7 {
+use "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\base_data\raw\spround`i'.dta" , clear
+	keep spid sc*toilhlp sc*toildif sc*toilwout sc*bathhlp sc*bathdif sc*bathwout sc*dreshlp sc*dresdif sc*dreswout mc*medsdif mc*dmedsreas ha*bankdif ha*dbankreas ha*bankwout
+	rename *`i'* **
+	rename sc* *
+	rename mc* *
+	rename ha* *
+	rename db* b*
+	rename dm* m*
+	gen wave=`i'
+	tempfile t`i'
+	save `t`i''
+}
+
+clear
+append using `t1'
+append using `t5'
+append using `t7'
+gen medswout=0
+tempfile t1
+save `t1'
+
+use "${nhats}\sp_round_1_8_public_sens_only.dta" if inlist(wave,1,5,7), clear
+drop dresdif
+
+merge 1:1 spid wave using `t1', keep(match) nogen
+
+
+
+
+merge m:1 spid using  "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\base_data\raw\NSOC_Round_5_SP_Tracker_File_V3.dta", nogen keep(match master) keepusing(fl*dnsoc)
+
+merge m:1 spid using  "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\base_data\raw\NSOC_R7_Crss_SP_Tracker_File.dta", nogen keep(match master) keepusing(fl*dnsoc)
+
+foreach x in 5 7 {
+	replace eligible_nsoc=fl`x'dnsoc==1 if wave==`x'
+}
+
+
+foreach x of varlist *jenny {
+	*replace `x'=1
+}
+
+
+
+merge 1:m spid wave using "${nhats}\nsoc_round_1_7.dta", gen(nsocm) keepusing(opid)
+drop opid
+duplicates drop
+replace completed_nsoc=nsocm==3
+
+gen n=1
+gen age_ge67=age>=67
+label var age_ge67 "Age 67+"
+label var eligible_nsoc "Eligible for NSOC interview"
+label var completed_nsoc "NSOC interview completed"
+
+local sampvars sp_ivw_yes community_dwelling age_ge67 prob_dem toil_jenny dres_jenny sev_dem bath_jenny meds_jenny bank_jenny eligible_nsoc completed_nsoc
+
+tokenize all 1 5 7
+
+mat tab=J(12,6,.)
+local r=1
+local c=2
+
+keep if sp_ivw==1 & !lml
+
+preserve
+
+foreach x of local sampvars {
+	sum n if missing(`x')
+	mat tab[`r',6]==r(N)
+	foreach y in toil dres bath {
+	if inlist("`x'","`y'_jenny") {
+		sum n if `y'dif<-1 | `y'hlp<-1 | `y'wout<-1		
+		mat tab[`r',6]=r(N)
+}	
+}
+	foreach y in meds bank {
+	if inlist("`x'","`y'_jenny") {
+		sum n if `y'reas<-1 | `y'dif<-1 | `y'wout<-1	
+		mat tab[`r',6]=r(N)
+}	
+}	
+
+	keep if `x'==1
+	sum `x'
+	mat tab[`r',1]=r(N)
+	forvalues y=2/4 {
+		sum `x' if wave==``y''
+		mat tab[`r',`y']==r(N)
+}
+	local r=`r'+1
+}
+
+mat rownames tab=`sampvars'
+
+frmttable using "${outpath}/sample_derivation.rtf", statmat(tab) varlabels sdec(0) title("Sample derivation") ctitles("" "Pooled" "Wave 1" "Wave 5" "Wave 7" "" "N missing") replace
+
+restore
+
+local r=1
+
+local sampvars sp_ivw_yes eligible_nsoc completed_nsoc community_dwelling age_ge67 prob_dem  toil_jenny dres_jenny bath_jenny meds_jenny bank_jenny sev_dem 
+
+foreach x of local sampvars {
+	sum n if missing(`x')
+	mat tab[`r',6]==r(N)
+	foreach y in toil dres bath {
+	if inlist("`x'","`y'_jenny") {
+		sum n if `y'dif<-1 | `y'hlp<-1 | `y'wout<-1		
+		mat tab[`r',6]=r(N)
+}	
+}
+	foreach y in meds bank {
+	if inlist("`x'","`y'_jenny") {
+		sum n if `y'reas<-1 | `y'dif<-1 | `y'wout<-1	
+		mat tab[`r',6]=r(N)
+}	
+}
+
+	keep if `x'==1
+	sum `x'
+	mat tab[`r',1]=r(N)
+	forvalues y=2/4 {
+		sum `x' if wave==``y''
+		mat tab[`r',`y']==r(N)
+}
+	local r=`r'+1
+}
+
+mat rownames tab=`sampvars'
+
+frmttable using "${outpath}/sample_derivation.rtf", statmat(tab) varlabels sdec(0) title("Sample derivation") ctitles("" "Pooled" "Wave 1" "Wave 5" "Wave 7" "" "N missing") addtable
+
+
+H="create dataset"
+
+use "${nhats}\sp_round_1_8_public_sens_only.dta" if inlist(wave,1,5,7), clear
+
+preserve
+
+foreach x in 1 5 7 {
+use spid ip* using "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\base_data\raw\spround`x'.dta", clear
+if `x'>1 replace ip`x'nginsnurs=ip`x'nginslast if ip`x'nginsnurs==-1
+keep spid ip`x'nginsnurs
+gen wave=`x'
+rename ip`x'* *
+if `x'>1 append using `t1'
+tempfile t1
+save `t1'
+
+use spid opid op`x'proxy using "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\base_data\raw\opround`x'.dta", clear
+gen wave=`x'
+gen cgisproxy=op`x'proxy==1
+label var cgisproxy "CG was proxy for NHATS"
+drop op`x'proxy
+if `x'>1 append using `proxy'
+tempfile proxy
+save `proxy'
+
+}
+
+restore
+
+merge 1:1 spid wave using `t1', keep(match master) gen(tclm)
+gen ltcins=ngin==1 if ngin>=0
+label var ltcins "LTC insurance"
+
+gen income_adj=aveincome if wave==7
+replace income_adj= (240.007/224.939)*aveincome if wave==1
+replace income_adj= (240.007/229.594)*aveincome if wave==2
+replace income_adj= (240.007/232.957)*aveincome if wave==3
+replace income_adj= (240.007/236.736)*aveincome if wave==4
+replace income_adj= (240.007/237.017)*aveincome if wave==5
+//replace income_adj= (240.007/240.007)*aveincome if wave==6
+replace income_adj=income_adj/(240.007/237.017)
+label var income_adj "Income, 2015$"
+
+gen imp=aveincome==imputed_inc1
+forvalues i=1/5 {
+replace imputed_inc`i'=aveincome if missing(imputed_inc`i')
+
+replace imputed_inc`i'= (240.007/224.939)*imputed_inc`i' if wave==1
+replace imputed_inc`i'= (240.007/229.594)*imputed_inc`i' if wave==2
+replace imputed_inc`i'= (240.007/232.957)*imputed_inc`i' if wave==3
+replace imputed_inc`i'= (240.007/236.736)*imputed_inc`i' if wave==4
+replace imputed_inc`i'= (240.007/237.017)*imputed_inc`i' if wave==5
+//replace imputed_inc`i'= (240.007/240.007)*imputed_inc`i' if wave==6
+replace imputed_inc`i'=imputed_inc`i'/(240.007/237.017)
+
+}
+
+gen inc=income_adj if !imp
+
+egen a1=rowtotal(toil_j dres_j bath_j meds_j bank_j)
+gen severe=a1==5
+*gen sev_dem=severe==1 & prob_dem==1
+label var sev_dem "Severe dementia"
+
+
+//merge 1:m spid wave using `nsoc'
+
+merge 1:m spid wave using "${nhats}\nsoc_round_1_7.dta", gen(nsocm) 
+drop cg_relationship_cat1
+merge 1:1 spid opid wave using `proxy', gen(proxym) keep(match master) keepusing(cgisproxy)
+
+tostring spid, gen(strspid)
+gen nsocid=strspid+opid
+sort nsocid wave
+foreach i in 1 5 7 {
+by nsocid: egen has`i'=max(wave==`i')
+}
+svyset varunit [pw=anfinw], strat(varstrat)
+
+gen nsoc1and5=has1==1 & has5==1
+gen nsoc1and7=has1==1 & has7==1
+gen nsoc5and7=has5==1 & has7==1
+gen nsocall=has1==1 & has5==1 & has7==1
+/*
+tab1 nsoc* if prob_dem==1
+tab1 nsoc* if sev_dem==1
+tab1 nsoc*a* if prob_dem==1
+tab1 nsoc*a* if sev_dem==1
+*/
+
+merge 1:1 spid opid wave using "${nhats}\op_round_1_8.dta", gen(opm) keep(match master) keepusing(op_hrswk_i)
+
+gen tot_hrswk_inf=tot_hrswk_help_i-tot_hrswk_paid_i
+
+label var tot_hrswk_inf "Hours of care per week from all family helpers"
+label var tot_hrswk_help "Hours of care per week from all helpers"
+label var tot_hrswk_paid "Hours of care per week from paid help"
+label var total_hours_week "Hours of care per week from primary CG (self-report NSOC)"
+label var op_hrswk_i "Hours of care per week from primary CG (SP report NHATS)"
+label var any_paid_by_sp "SP self-pays for help"
+gen cg_kid=cg_relationship_cat==2
+label var cg_kid "CG is child/step/in-law"
+gen cg_resides=cg_dist_cat==1 if !missing(cg_dist_cat)
+label var cg_resides "CG coresides with SP"
+
+
+foreach x in financial emotional physical {
+	gen `x'_cat=diff_`x'_lv+1
+	replace `x'_cat=3 if diff_`x'_lv_di==1
+	label define `x'_cat 1 "None" 2 "Some (1-3)" 3 "A lot (4/5)"
+	label values `x'_cat `x'_cat
+}
+label var financial_cat "Financial difficulty from help"
+label var emotional_cat "Emotional difficulty from help"
+label var physical_cat "Physical difficulty from help"
+
+//composite strain
+drop neg_no_routine
+egen cg_strain=rowtotal(*_lv* neg*)
+gen cg_strain_ind=inrange(cg_strain,5,9)
+label var cg_strain_ind "Caregiver strain 5+"
+label var cg_strain "Caregiver strain"
+
+keep if cg_primary_nsoc==1 | nsocm==1
+gen demw=wave if nsocm==3 & prob_dem==1
+gen sdemw=wave if nsocm==3 & sev_dem==1
+by spid, sort: egen fdem=min(demw)
+by spid: egen fsdem=min(sdem)
+gen pop=nsocm==3 & sev_dem==1 & age>=67 & !nhres
+tempfile t1
+save `t1'
+
+
+foreach i in 1 5 7 {
+	use spid opid op`i'proxy using "${nhats}\raw\opround`i'.dta", clear
+	merge 1:1 spid opid using "${nhats}\raw\NSOC`i'.dta", keep(match) keepusing(c*p`i'hlpkpt*) nogen
+	rename op*proxy cg_proxy
+	if `i'==1 rename ccp* cpp*
+	foreach x in vs rl go wk vo ca gr {
+		gen ind_kept_`x'=cpp`i'hlpkpt`x'==1 if cpp`i'hlpkpt`x'>0
+
+}
+	label var ind_kept_vs "Kept from visiting"
+	label var ind_kept_rl "Kept from religious services"
+	label var ind_kept_go "Kept from going out"
+	label var ind_kept_wk "Kept from working"
+	label var ind_kept_vo "Kept from volunteering"
+	label var ind_kept_ca "Kept from providing care"
+	label var ind_kept_gr "Kept from group activity"
+	egen ind_kept_any=rowmax(ind_kept_*)
+	label var ind_kept_any "Kept from any activity"
+	drop cpp*
+	gen wave=`i'
+	tempfile op`i'
+	save `op`i''
+}
+
+foreach i in  1 5 7 {
+append using `op`i''
+}
+replace cg_proxy=0 if cg_proxy==-1
+label var cg_proxy "CG was proxy for NHATS interview in same wave"
+duplicates drop
+tempfile t2
+save `t2'
+
+use `t1'
+merge 1:1 spid opid wave using `t2', keep(match master) nogen
+
+forvalues i=0/4 {
+	gen t`i'=.
+}
+
+local t0 "Caregiver wellbeing"
+label var t1 "Caregiving difficulty"
+label var t2 "Role overload"
+label var t3 "Impact of providing care"
+label var t4 "Caregiving relationships"
+
+save "${datapath}\sev_dem_cg_strain", replace
+
+H="table 1"
+use "${datapath}\sev_dem_cg_strain", clear
+
+foreach x of varlist  t2 neg* t3 ind_kept* cg_srh_pf t4 gain* {
+	local ivars `ivars' `x'
+}
+
+
+local round=1
+local cvars`round' age
+local ivars`round' female white educ_hs_ind
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' income_adj
+local ivars`round' 
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round' medicaid ltcins married proxy_ivw cg_proxy
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' n_children adlcount_jenny iadlcount_jenny sr_numconditions1
+local ivars`round' sr_hosp_ind metro_ind
+local catvars`round' 
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round'  
+local catvars`round'
+	
+local round=`round'+1
+local cvars`round' 
+local ivars`round' 
+local catvars`round' 
+	
+local round=`round'+1
+local cvars`round' cg_age
+local ivars`round' cg_female work_4_pay cg_kid
+local catvars`round' 
+di `round'
+local round=`round'+1
+local cvars`round' 
+local ivars`round' cg_resides any_paid_by_sp
+local catvars`round' 
+	
+local round=`round'+1
+local cvars`round' total_hours_week op_hrswk_i n_helpers tot_hrswk_help_i n_family_helpers tot_hrswk_inf n_paid_helpers tot_hrswk_paid_i
+local ivars`round' t0
+local catvars`round'
+
+local round=`round'+1
+local cvars`round'  cg_strain
+local ivars`round' cg_strain_ind t1 diff_financial_lv diff_emotional_lv diff_physical_lv
+local catvars`round' //financial_cat emotional_cat physical_cat
+
+local round=`round'+1
+local cvars`round' 
+local ivars`round' `ivars' 
+local catvars`round' 
+
+
+
+forvalues i=1/`round' {
+	foreach x of local catvars`i' {
+		di "`x'"
+		local `x'
+		levelsof `x', local(levels)
+		foreach l of local levels {
+			gen `x'`l'=`x'==`l' if !missing(`x')
+			local lab : label `x' `l'
+			label var `x'`l' "`lab'"
+			local `x' ``x'' `x'`l'
+}
+		di "``x''"
+		local cativars`i' `cativars`i'' ``x''
+		local catrowvars`i' `catrowvars`i'' `x' ``x''
+}
+}
+
+di "`catvars1'"
+di "`cativars1'"
+
+forvalues i=1/`round' {
+	foreach x of local cvars`i' {
+		local lab : var label `x'
+		label var `x' "`lab', Mean"
+		local crowsvars`i' `crowsvars`i'' `x' Median SD //P_25 P_75
+		*if inlist("`x'","income_adj","tot_hrswk_help_i","tot_hrswk_paid_i", "total_hours_week") local crowsvars`i' `crowsvars`i'' Median
+}
+	local rows `rows' `crowsvars`i'' `ivars`i'' `catrowvars`i''
+}
+
+gen group1=1
+gen group2= n_paid==0
+gen group3=tot_hrswk_paid_i<40 & group2==0
+gen group4=tot_hrswk_paid_i>=40 & group2==0 & group3==0
+gen paidcat=group2==1
+replace paidcat=2 if group3==1
+replace paidcat=3 if group4==1
+
+local rn : word count `rows' 1
+local title "Probable dementia"
+local replace replace
+*replace pop=wave==fsdem
+
+foreach timethrough in 1 {
+mat tab=J(`rn',7,.)
+mat stars=J(`rn',7,0)
+local r=1
+local c=1
+
+forvalues y=1/4 {
+	sum pop if pop==1 & inlist(group`y',1) [aw=anfinw]
+	mat tab[`r',`c']=r(N)
+	local r=`r'+1
+	forvalues i=1/`round' {
+		*if inlist(`i',1,6) local r=`r'+1
+		di "r=`r'"
+		di "c=`c'"
+		foreach x of local cvars`i' {
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw], d
+			mat tab[`r',`c']=r(mean)
+			mat tab[`r'+1,`c']=r(p50)
+			mat tab[`r'+2,`c']=r(sd)
+			if "`y'"=="4" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				svy, subpop(if pop==1 & group`z'==0): reg `x' paidcat
+				test paidcat
+				mat tab[`r',`c'+`cc']=r(p)
+				mat stars[`r',`c'+`cc']=(r(p)<.05)+(r(p)<.01)
+				local cc=`cc'+1
+}			
+
+
+}
+			/*if inlist("`x'","income_adj","tot_hrswk_help_i","tot_hrswk_paid_i", "total_hours_week") {
+				sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw], d
+				mat tab [`r'+1,`c']=r(p50)
+				local r=`r'+1
+}*/
+			local r=`r'+3
+			
+}
+		foreach x of local ivars`i' {
+			if !inlist("`x'","t0","t1","t2","t3","t4") {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `x' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=11 mat tab[`r',`c']=r(mean)*100
+			if "`y'"=="4" {
+				local cc=1
+				forvalues z=4(-1)2 {
+				if `z'==4 svy, subpop(if pop==1 & group`z'==0): tab `x' group2
+				else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+}
+}
+			local r=`r'+1
+}
+		di "`catvars`i'"
+		foreach x of local catvars`i' {
+			if "`y'"=="1" {
+				local cc=4
+				forvalues z=4(-1)2 {
+				if `z'==4 svy, subpop(if pop==1 & group`z'==0): tab `x' group2
+				else svy, subpop(if pop==1 & group`z'==0): tab `x' group4
+				mat tab[`r',`c'+`cc']=e(p_Pear)
+				mat stars[`r',`c'+`cc']=(e(p_Pear)<.05)+(e(p_Pear)<.01)
+				local cc=`cc'+1
+}
+}
+			local r=`r'+1
+			foreach z of local `x' {
+			sum `z' if pop==1 & inlist(group`y',1)
+			local cens=r(mean)*r(N)
+			sum `z' if pop==1 & inlist(group`y',1) [aw=anfinw]
+			if `cens'>=5	mat tab[`r',`c']=r(mean)*100
+				local r=`r'+1
+
+}
+}
+}
+
+	local r=1
+	local c=`c'+1
+}
+
+mat rownames tab=N `rows' 
+
+frmttable using "${outpath}\table_1_`c(current_date)'_cg.rtf", ///
+`replace' title("Sample Characteristics") varlabels sdec(1,1,1,1,3) statmat(tab) ///
+ctitles("" "Full Sample" "No Paid Care (A)" "<40hrs paid care (B)" "40+ hours (C)" "P-value: AtoB" "P-value: AtoC" "P-value: BtoC") ///
+annotate(stars) asymbol(*,**) note(Observation from first NSOC with severe dementia) 
+
+local replace addtable
+local title Severe Dementia
+replace pop=wave==fsdem
+}
+
+H="regressions"
+use "${datapath}\sev_dem_cg_strain", clear
+
+
+cd "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\output\in_progress"
+
+svyset spid [pw=anfinwgt], strat(varstrat)
+
+
+gen nopaid=!tot_hrswk_paid
+gen ptpaid=inrange(tot_hrswk_paid,0.001,39.999)
+label var nopaid "No paid help"
+label var ptpaid "<40hrs paid help"
+
+gen ind_40plus_paid=tot_hrswk_paid>=40
+label var ind_40plus_paid "40+ hrs of paid care"
+local xvars age female adlcount_jenny medicaid 
+local xvars2 cg_age cg_female cg_resides cg_kid total_hours_week
+
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels 
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay addtable
+	
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay replace
+	
+		
+	qui svy, subpop(pop): logit ind_kept_any ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay addtable
+
+
+
+	
+drop if lml | !sp_ivw	
+mi set wide
+mi register imputed medicaid cg_age cg_resides total_hours_week
+mi impute chained (logit) medicaid (logit) cg_resides (regress) cg_age (regress) total_hours_week = age income_quart hhm cg_relationship_cat op_hrswk_i if !missing(cg_relationship_cat), add(5)
+mi estimate: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	
+
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat_mi, replay replace
+	
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat_mi, replay addtable
+		
+	qui mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat_mi, replay addtable
+
+	
+
+
+H="regressions with the caregvier weight"
+use "${datapath}\sev_dem_cg_strain", clear
+
+
+cd "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\output\in_progress"
+
+svyset spid [pw=cgfinwgt], strat(cgvarstrat)
+
+
+gen nopaid=!tot_hrswk_paid
+gen ptpaid=inrange(tot_hrswk_paid,0.001,39.999)
+label var nopaid "No paid help"
+label var ptpaid "<40hrs paid help"
+
+gen ind_40plus_paid=tot_hrswk_paid>=40
+label var ind_40plus_paid "40+ hrs of paid care"
+local xvars age female adlcount_jenny medicaid 
+local xvars2 cg_age cg_female cg_resides cg_kid total_hours_week
+
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels 
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay addtable
+	
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay replace
+	
+		
+	qui svy, subpop(pop): logit ind_kept_any ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay addtable
+
+
+
+	
+drop if lml | !sp_ivw	
+mi set wide
+mi register imputed medicaid cg_age cg_resides total_hours_week
+mi impute chained (logit) medicaid (logit) cg_resides (regress) cg_age (regress) total_hours_week = age income_quart hhm cg_relationship_cat op_hrswk_i if !missing(cg_relationship_cat), add(5)
+mi estimate: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	
+
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat_mi, replay replace
+	
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat_mi, replay addtable
+		
+	qui mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat_mi, replay addtable
+
+	
+
+
+H="regressions excluding any missingness in cg_strain"
+use "${datapath}\sev_dem_cg_strain", clear
+
+
+cd "J:\Geriatrics\PCare\HRS Projects\Data & Project-based (reference docs, etc)\NHATS\Caregiving\jr_dem_paid_cgs_and_cg_strain\output\in_progress"
+drop if misss
+svyset spid [pw=anfinwgt], strat(varstrat)
+
+
+gen nopaid=!tot_hrswk_paid
+gen ptpaid=inrange(tot_hrswk_paid,0.001,39.999)
+label var nopaid "No paid help"
+label var ptpaid "<40hrs paid help"
+
+gen ind_40plus_paid=tot_hrswk_paid>=40
+label var ind_40plus_paid "40+ hrs of paid care"
+local xvars age female adlcount_jenny medicaid 
+local xvars2 cg_age cg_female cg_resides cg_kid total_hours_week
+
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels 
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay addtable
+	
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay replace
+	
+		
+	qui svy, subpop(pop): logit ind_kept_any ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat, replay addtable
+
+
+
+	
+drop if lml | !sp_ivw	
+mi set wide
+mi register imputed medicaid cg_age cg_resides total_hours_week
+mi impute chained (logit) medicaid (logit) cg_resides (regress) cg_age (regress) total_hours_week = age income_quart hhm cg_relationship_cat op_hrswk_i if !missing(cg_relationship_cat), add(5)
+mi estimate: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	
+
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid
+	qui outreg, stats(b p) varlabels
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars'
+	qui outreg, stats(b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): reg cg_strain ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(b p) varlabels merge
+	outreg using cg_strain_regs_3cat_mi_nomissstrain, replay replace
+	
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 mi estimate, post: svy, subpop(pop): logit cg_strain_ind ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat_mi_nomissstrain, replay addtable
+		
+	qui mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid
+	qui outreg, stats(e_b p) varlabels 
+	qui mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars'
+	qui outreg, stats(e_b p) varlabels merge
+	qui mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	 mi estimate, post: svy, subpop(pop): logit ind_kept_any ind_40plus_paid `xvars' `xvars2'
+	qui outreg, stats(e_b p) varlabels merge
+	outreg using cg_strain_regs_3cat_mi_nomissstrain, replay addtable
+
+	
